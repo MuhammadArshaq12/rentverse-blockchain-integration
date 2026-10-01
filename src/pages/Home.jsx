@@ -8,10 +8,20 @@ import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { ConnectButton } from 'thirdweb/react';
 import { client } from '../lib/thirdwebClient';
 import { useTheme } from '../context/ThemeContext';
+import { prepareMintTransaction, getContractInfo } from '../lib/blockchainApi';
 
 function Home() {
   const [openSections, setOpenSections] = useState({});
   const { theme } = useTheme();
+
+  const [tokenURI, setTokenURI] = useState(
+    'https://example.com/metadata/1.json'
+  );
+  const [minting, setMinting] = useState(false);
+  const [mintStatus, setMintStatus] = useState('');
+  const [transactionHash, setTransactionHash] = useState('');
+  const [mintError, setMintError] = useState('');
+  const [contractInfo, setContractInfo] = useState(null);
 
   const featuredProperties = [
     {
@@ -216,6 +226,72 @@ function Home() {
     }));
   };
 
+  const handleMint = async () => {
+    setMinting(true);
+    setMintStatus('');
+    setTransactionHash('');
+    setMintError('');
+
+    try {
+      if (!window.ethereum) {
+        throw new Error(
+          'MetaMask is not installed. Please install MetaMask to continue.'
+        );
+      }
+
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('Please connect your MetaMask wallet first.');
+      }
+
+      const chainId = await window.ethereum.request({
+        method: 'eth_chainId',
+      });
+
+      if (chainId !== '0xaa36a7') {
+        throw new Error(
+          'Please switch MetaMask to the Sepolia network.'
+        );
+      }
+
+      setMintStatus('Preparing mint transaction...');
+
+      const transaction = await prepareMintTransaction(tokenURI);
+
+      setMintStatus('Waiting for MetaMask confirmation...');
+
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: accounts[0],
+            to: transaction.to,
+            data: transaction.data,
+            value: transaction.value,
+          },
+        ],
+      });
+
+      setTransactionHash(txHash);
+      setMintStatus('Transaction submitted successfully.');
+    } catch (error) {
+      console.error('Mint error:', error);
+
+      if (error.code === 4001) {
+        setMintError('Transaction was rejected in MetaMask.');
+      } else {
+        setMintError(error.message || 'Mint transaction failed.');
+      }
+
+      setMintStatus('');
+    } finally {
+      setMinting(false);
+    }
+  };
+
   return (
     <div className="space-y-16">
       {/* Hero Section */}
@@ -228,9 +304,9 @@ function Home() {
           />
           <div className="absolute inset-0 bg-black bg-opacity-50" />
         </div>
-        
+
         <div className="relative container text-center text-white space-y-8">
-          <motion.h1 
+          <motion.h1
             className="text-5xl font-bold"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -238,7 +314,7 @@ function Home() {
           >
             Invest and Trade in Real Estate with Cryptocurrency
           </motion.h1>
-          <motion.p 
+          <motion.p
             className="text-xl max-w-2xl mx-auto"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -285,7 +361,7 @@ function Home() {
             <h2 className="text-3xl font-bold mb-4">How RentVerse Works</h2>
             <p className="text-secondary-300">Understanding our tokenized real estate platform</p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {howItWorks.map((item, index) => (
               <motion.div
@@ -303,6 +379,134 @@ function Home() {
                 <p className="text-secondary-300 text-center">{item.description}</p>
               </motion.div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Blockchain Demo */}
+      <section className="container">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold mb-4">
+              Blockchain Demo
+            </h2>
+            <p className="text-secondary-600 dark:text-secondary-400">
+              Test the RentVerse Real Estate NFT contract on Sepolia.
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-secondary-800 rounded-xl shadow-md p-6 md:p-8">
+            <div className="mb-6">
+              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                <div>
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">
+                    Smart Contract
+                  </p>
+
+                  <p className="font-semibold">
+                    Real Estate (REAL)
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setMintError('');
+                      const info = await getContractInfo();
+                      setContractInfo(info);
+                    } catch (error) {
+                      setMintError(error.message);
+                    }
+                  }}
+                  className="btn"
+                >
+                  Load Contract Info
+                </button>
+              </div>
+
+              {contractInfo && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-secondary-50 dark:bg-secondary-700 rounded-lg p-4">
+                    <p className="text-sm text-secondary-500 dark:text-secondary-400">
+                      Contract
+                    </p>
+                    <p className="text-sm font-medium break-all">
+                      {contractInfo.contractAddress}
+                    </p>
+                  </div>
+
+                  <div className="bg-secondary-50 dark:bg-secondary-700 rounded-lg p-4">
+                    <p className="text-sm text-secondary-500 dark:text-secondary-400">
+                      Total Supply
+                    </p>
+                    <p className="text-lg font-semibold">
+                      {contractInfo.totalSupply}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-secondary-200 dark:border-secondary-700 pt-6">
+              <label
+                htmlFor="tokenURI"
+                className="block text-sm font-medium mb-2"
+              >
+                Token URI
+              </label>
+
+              <input
+                id="tokenURI"
+                type="text"
+                value={tokenURI}
+                onChange={(e) => setTokenURI(e.target.value)}
+                placeholder="https://example.com/metadata/1.json"
+                className="w-full px-4 py-3 rounded-lg border border-secondary-300 dark:border-secondary-600 dark:bg-secondary-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+
+              <button
+                type="button"
+                onClick={handleMint}
+                disabled={minting}
+                className="btn w-full mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {minting ? 'Processing...' : 'Mint Real Estate NFT'}
+              </button>
+            </div>
+
+            {mintStatus && (
+              <div className="mt-4 p-4 rounded-lg bg-primary-50 dark:bg-secondary-700">
+                <p className="text-primary-700 dark:text-primary-300">
+                  {mintStatus}
+                </p>
+              </div>
+            )}
+
+            {mintError && (
+              <div className="mt-4 p-4 rounded-lg bg-red-50 dark:bg-red-900/20">
+                <p className="text-red-600 dark:text-red-400">
+                  {mintError}
+                </p>
+              </div>
+            )}
+
+            {transactionHash && (
+              <div className="mt-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20">
+                <p className="text-green-700 dark:text-green-400 font-medium mb-2">
+                  Transaction submitted
+                </p>
+
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${transactionHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-600 dark:text-primary-400 hover:underline break-all text-sm"
+                >
+                  View transaction on Sepolia Etherscan
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -404,7 +608,7 @@ function Home() {
           </div>
         </div>
       </section>
-      
+
       {/* CTA Section */}
       <section className="container">
         <div className="bg-primary-600 rounded-2xl p-8 md:p-12 text-white text-center">
@@ -427,7 +631,7 @@ function Home() {
           </div>
         </div>
       </section>
-      
+
       {/* Blog */}
       <div className="container bg-white dark:bg-secondary-800 py-24">
         <motion.div
@@ -534,7 +738,7 @@ function Home() {
           </div>
         </motion.div>
       </section>
-      
+
       {/* Discord CTA */}
       <section className="py-12 bg-primary-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
